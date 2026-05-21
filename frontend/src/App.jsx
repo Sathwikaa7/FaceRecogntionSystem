@@ -229,6 +229,27 @@ function App() {
         screenshotFormat="image/jpeg"
         width={400}
       />
+      <br />
+
+<input
+  type="file"
+  accept="image/*"
+  onChange={(e) => {
+
+    const file = e.target.files[0]
+
+    if (file) {
+
+      const reader = new FileReader()
+
+      reader.onloadend = () => {
+        setCapturedImage(reader.result)
+      }
+
+      reader.readAsDataURL(file)
+    }
+  }}
+/>
 
       {capturedImage && (
         <div>
