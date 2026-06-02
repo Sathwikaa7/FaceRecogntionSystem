@@ -3,6 +3,8 @@ from flask_cors import CORS
 from deepface import DeepFace
 import os
 import json
+import csv
+from flask import send_file
 from datetime import datetime
 
 app = Flask(__name__)
@@ -241,6 +243,55 @@ def stats():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route("/export_history")
+def export_history():
+
+    try:
+
+        csv_file = os.path.join(
+            UPLOAD_FOLDER,
+            "history.csv"
+        )
+
+        with open(
+            HISTORY_FILE,
+            "r"
+        ) as f:
+
+            history = json.load(f)
+
+        with open(
+            csv_file,
+            "w",
+            newline=""
+        ) as file:
+
+            writer = csv.writer(file)
+
+            writer.writerow([
+                "Name",
+                "Similarity",
+                "Time"
+            ])
+
+            for item in history:
+
+                writer.writerow([
+                    item["name"],
+                    item["similarity"],
+                    item["time"]
+                ])
+
+        return send_file(
+            csv_file,
+            as_attachment=True
+        )
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 if __name__ == "__main__":

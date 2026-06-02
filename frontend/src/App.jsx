@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import Webcam from 'react-webcam'
 import axios from 'axios'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid
+} from 'recharts'
 import './App.css'
 
 function App() {
@@ -14,12 +23,15 @@ function App() {
   const [registeredFaces, setRegisteredFaces] = useState([])
   const [recognitionResult, setRecognitionResult] = useState(null)
   const [history, setHistory] = useState([])
+  const [stats, setStats] = useState({ registered_faces: 0, recognitions: 0 })
+  const [darkMode, setDarkMode] = useState(false)
 
   const API_BASE = 'http://127.0.0.1:5000'
 
   useEffect(() => {
     loadRegisteredFaces()
     loadHistory()
+    loadStats()
   }, [])
 
   const loadRegisteredFaces = async () => {
@@ -37,6 +49,15 @@ function App() {
       setHistory(response.data)
     } catch (error) {
       console.error('Error loading history:', error)
+    }
+  }
+
+  const loadStats = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/stats`)
+      setStats(response.data)
+    } catch (error) {
+      console.error('Error loading stats:', error)
     }
   }
 
@@ -84,6 +105,7 @@ function App() {
         setRegisterName('')
         setCapturedImage(null)
         loadRegisteredFaces()
+        loadStats()
       } else {
         setMessage(response.data.message)
         setMessageType('error')
@@ -126,6 +148,7 @@ function App() {
         setMessage(`Recognized: ${response.data.name}`)
         setMessageType('success')
         loadHistory()
+        loadStats()
       } else {
         setRecognitionResult(null)
         setMessage(response.data.message)
@@ -143,6 +166,7 @@ function App() {
     try {
       await axios.delete(`${API_BASE}/delete_face/${name}`)
       loadRegisteredFaces()
+      loadStats()
     } catch (error) {
       console.error(error)
     }
@@ -151,6 +175,7 @@ function App() {
   const clearHistory = async () => {
     await axios.delete(`${API_BASE}/clear_history`)
     loadHistory()
+    loadStats()
   }
 
   const getMessageColor = () => {
@@ -162,9 +187,54 @@ function App() {
     }
   }
 
+  // Prepare chart data: last 20 history entries in chronological order
+  const chartData = history
+    .slice()
+    .reverse()
+    .slice(-20)
+    .map((item, index) => ({
+      index: index + 1,
+      similarity: parseFloat(item.similarity),
+      name: item.name,
+      time: item.time
+    }))
+
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Face Recognition System</h1>
+    <div
+      style={{
+        padding: '20px',
+        minHeight: '100vh',
+        backgroundColor: darkMode ? '#121212' : '#ffffff',
+        color: darkMode ? 'white' : 'black'
+      }}
+    >
+      {/* Header row with dark mode toggle */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Face Recognition System</h1>
+        <button onClick={() => setDarkMode(!darkMode)}>
+          {darkMode ? 'Light Mode' : 'Dark Mode'}
+        </button>
+      </div>
+
+      {/* Stats Panel */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '20px',
+          marginBottom: '20px',
+          padding: '15px',
+          border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
+          borderRadius: '8px',
+          backgroundColor: darkMode ? '#1e1e1e' : '#f9f9f9'
+        }}
+      >
+        <div>
+          <strong>Registered Faces:</strong> {stats.registered_faces}
+        </div>
+        <div>
+          <strong>Total Recognitions:</strong> {stats.recognitions}
+        </div>
+      </div>
 
       <h2>Camera</h2>
 
@@ -245,20 +315,14 @@ function App() {
           style={{
             marginTop: '15px',
             padding: '15px',
-            border: '1px solid #ddd',
+            border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
             borderRadius: '8px',
-            backgroundColor: '#f5f5f5'
+            backgroundColor: darkMode ? '#1e1e1e' : '#f5f5f5'
           }}
         >
           <h3>Recognition Result</h3>
-          <p>
-            <strong>Name:</strong>{" "}
-            {recognitionResult.name}
-          </p>
-          <p>
-            <strong>Similarity:</strong>{" "}
-            {recognitionResult.similarity}%
-          </p>
+          <p><strong>Name:</strong> {recognitionResult.name}</p>
+          <p><strong>Similarity:</strong> {recognitionResult.similarity}%</p>
         </div>
       )}
 
@@ -272,10 +336,8 @@ function App() {
         <ul>
           {registeredFaces.map((name, index) => (
             <li key={index}>
-              {name}{" "}
-              <button onClick={() => deleteFace(name)}>
-                Delete
-              </button>
+              {name}{' '}
+              <button onClick={() => deleteFace(name)}>Delete</button>
             </li>
           ))}
         </ul>
@@ -285,38 +347,85 @@ function App() {
 
       <h2>Recognition History</h2>
 
-      <button onClick={clearHistory}>
-        Clear History
+      <button onClick={clearHistory}>Clear History</button>
+      {' '}
+      <button onClick={() => window.open(`${API_BASE}/export_history`)}>
+        Export CSV
       </button>
 
       {history.length === 0 ? (
         <p>No recognition history yet</p>
       ) : (
-        <table
-          border="1"
-          cellPadding="10"
-          style={{ borderCollapse: 'collapse', marginTop: '10px' }}
-        >
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Similarity</th>
-              <th>Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history
-              .slice()
-              .reverse()
-              .map((item, index) => (
-                <tr key={index}>
-                  <td>{item.name}</td>
-                  <td>{item.similarity}%</td>
-                  <td>{item.time}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        <>
+          {/* Analytics Chart */}
+          <h3>Similarity Over Time (last 20 recognitions)</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#333' : '#eee'} />
+              <XAxis
+                dataKey="index"
+                label={{ value: 'Recognition #', position: 'insideBottom', offset: -2 }}
+                tick={{ fill: darkMode ? '#ccc' : '#333' }}
+              />
+              <YAxis
+                domain={[0, 100]}
+                tickFormatter={(v) => `${v}%`}
+                tick={{ fill: darkMode ? '#ccc' : '#333' }}
+              />
+              <Tooltip
+                formatter={(value, name) => [`${value}%`, 'Similarity']}
+                labelFormatter={(label) => {
+                  const item = chartData[label - 1]
+                  return item ? `${item.name} — ${item.time}` : `#${label}`
+                }}
+                contentStyle={{
+                  backgroundColor: darkMode ? '#222' : '#fff',
+                  color: darkMode ? '#fff' : '#000',
+                  border: `1px solid ${darkMode ? '#555' : '#ccc'}`
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="similarity"
+                stroke="#4f8ef7"
+                strokeWidth={2}
+                dot={{ r: 4 }}
+                activeDot={{ r: 6 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+
+          {/* History Table */}
+          <table
+            border="1"
+            cellPadding="10"
+            style={{
+              borderCollapse: 'collapse',
+              marginTop: '10px',
+              color: darkMode ? 'white' : 'black'
+            }}
+          >
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Similarity</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history
+                .slice()
+                .reverse()
+                .map((item, index) => (
+                  <tr key={index}>
+                    <td>{item.name}</td>
+                    <td>{item.similarity}%</td>
+                    <td>{item.time}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   )
