@@ -24,9 +24,7 @@ function App() {
 
   const loadRegisteredFaces = async () => {
     try {
-      const response = await axios.get(
-        `${API_BASE}/get_registered_faces`
-      )
+      const response = await axios.get(`${API_BASE}/get_registered_faces`)
       setRegisteredFaces(response.data)
     } catch (error) {
       console.error('Error loading registered faces:', error)
@@ -35,9 +33,7 @@ function App() {
 
   const loadHistory = async () => {
     try {
-      const response = await axios.get(
-        `${API_BASE}/history`
-      )
+      const response = await axios.get(`${API_BASE}/history`)
       setHistory(response.data)
     } catch (error) {
       console.error('Error loading history:', error)
@@ -141,6 +137,20 @@ function App() {
     } finally {
       setIsRecognizing(false)
     }
+  }
+
+  const deleteFace = async (name) => {
+    try {
+      await axios.delete(`${API_BASE}/delete_face/${name}`)
+      loadRegisteredFaces()
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
+  const clearHistory = async () => {
+    await axios.delete(`${API_BASE}/clear_history`)
+    loadHistory()
   }
 
   const getMessageColor = () => {
@@ -261,7 +271,12 @@ function App() {
       ) : (
         <ul>
           {registeredFaces.map((name, index) => (
-            <li key={index}>{name}</li>
+            <li key={index}>
+              {name}{" "}
+              <button onClick={() => deleteFace(name)}>
+                Delete
+              </button>
+            </li>
           ))}
         </ul>
       )}
@@ -270,13 +285,17 @@ function App() {
 
       <h2>Recognition History</h2>
 
+      <button onClick={clearHistory}>
+        Clear History
+      </button>
+
       {history.length === 0 ? (
         <p>No recognition history yet</p>
       ) : (
         <table
           border="1"
           cellPadding="10"
-          style={{ borderCollapse: 'collapse' }}
+          style={{ borderCollapse: 'collapse', marginTop: '10px' }}
         >
           <thead>
             <tr>

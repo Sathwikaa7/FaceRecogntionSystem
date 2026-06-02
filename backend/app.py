@@ -30,21 +30,12 @@ def home():
 
 @app.route("/verify", methods=["POST"])
 def verify_face():
-
     try:
-
         img1 = request.files["img1"]
         img2 = request.files["img2"]
 
-        path1 = os.path.join(
-            UPLOAD_FOLDER,
-            img1.filename
-        )
-
-        path2 = os.path.join(
-            UPLOAD_FOLDER,
-            img2.filename
-        )
+        path1 = os.path.join(UPLOAD_FOLDER, img1.filename)
+        path2 = os.path.join(UPLOAD_FOLDER, img2.filename)
 
         img1.save(path1)
         img2.save(path2)
@@ -56,10 +47,7 @@ def verify_face():
             enforce_detection=False
         )
 
-        similarity = round(
-            (1 - result["distance"]) * 100,
-            2
-        )
+        similarity = round((1 - result["distance"]) * 100, 2)
 
         return jsonify({
             "verified": result["verified"],
@@ -67,32 +55,22 @@ def verify_face():
         })
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/register_face", methods=["POST"])
 def register_face():
-
     try:
-
         name = request.form.get("name")
         image = request.files.get("image")
 
         if not name or not image:
-
             return jsonify({
                 "success": False,
                 "message": "Missing name or image"
             }), 400
 
-        save_path = os.path.join(
-            UPLOAD_FOLDER,
-            f"{name}.jpg"
-        )
-
+        save_path = os.path.join(UPLOAD_FOLDER, f"{name}.jpg")
         image.save(save_path)
 
         return jsonify({
@@ -101,7 +79,6 @@ def register_face():
         })
 
     except Exception as e:
-
         return jsonify({
             "success": False,
             "message": str(e)
@@ -110,70 +87,66 @@ def register_face():
 
 @app.route("/get_registered_faces")
 def get_registered_faces():
-
     try:
-
         faces = []
 
-        for file in os.listdir(
-            UPLOAD_FOLDER
-        ):
-
-            if (
-                file.endswith(".jpg")
-                and file != "temp.jpg"
-            ):
-
-                faces.append(
-                    file.replace(".jpg", "")
-                )
+        for file in os.listdir(UPLOAD_FOLDER):
+            if file.endswith(".jpg") and file != "temp.jpg":
+                faces.append(file.replace(".jpg", ""))
 
         return jsonify(faces)
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/delete_face/<name>", methods=["DELETE"])
+def delete_face(name):
+    try:
+        file_path = os.path.join(UPLOAD_FOLDER, f"{name}.jpg")
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return jsonify({
+                "success": True,
+                "message": f"{name} deleted"
+            })
 
         return jsonify({
-            "error": str(e)
+            "success": False,
+            "message": "Face not found"
+        }), 404
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
         }), 500
 
 
 @app.route("/recognize_face", methods=["POST"])
 def recognize_face():
-
     try:
-
         image = request.files.get("image")
 
         if not image:
-
             return jsonify({
                 "success": False,
                 "message": "No image provided"
             }), 400
 
-        temp_path = os.path.join(
-            UPLOAD_FOLDER,
-            "temp.jpg"
-        )
-
+        temp_path = os.path.join(UPLOAD_FOLDER, "temp.jpg")
         image.save(temp_path)
 
-        registered_files = os.listdir(
-            UPLOAD_FOLDER
-        )
+        registered_files = os.listdir(UPLOAD_FOLDER)
 
         for file in registered_files:
-
             if file == "temp.jpg":
                 continue
-
             if not file.endswith(".jpg"):
                 continue
 
-            registered_path = os.path.join(
-                UPLOAD_FOLDER,
-                file
-            )
+            registered_path = os.path.join(UPLOAD_FOLDER, file)
 
             result = DeepFace.verify(
                 temp_path,
@@ -183,92 +156,91 @@ def recognize_face():
             )
 
             if result["verified"]:
-
-                name = file.replace(
-                    ".jpg",
-                    ""
-                )
+                name = file.replace(".jpg", "")
 
                 similarity = round(
                     (1 - result["distance"]) * 100,
                     2
                 )
 
-                with open(
-                    HISTORY_FILE,
-                    "r"
-                ) as f:
-
+                with open(HISTORY_FILE, "r") as f:
                     history = json.load(f)
 
                 history.append({
-
                     "name": name,
                     "similarity": similarity,
-                    "time": datetime.now().strftime(
-                        "%d-%m-%Y %H:%M:%S"
-                    )
-
+                    "time": datetime.now().strftime("%d-%m-%Y %H:%M:%S")
                 })
 
-                with open(
-                    HISTORY_FILE,
-                    "w"
-                ) as f:
-
-                    json.dump(
-                        history,
-                        f,
-                        indent=4
-                    )
+                with open(HISTORY_FILE, "w") as f:
+                    json.dump(history, f, indent=4)
 
                 return jsonify({
-
                     "success": True,
                     "recognized": True,
                     "name": name,
                     "similarity": similarity,
                     "message": "Face recognized"
-
                 })
 
         return jsonify({
-
             "success": True,
             "recognized": False,
             "message": "No matching face found"
-
         })
 
     except Exception as e:
-
         return jsonify({
-
             "success": False,
             "message": str(e)
-
         }), 500
 
 
 @app.route("/history")
-def history():
-
+def get_history():
     try:
-
-        with open(
-            HISTORY_FILE,
-            "r"
-        ) as f:
-
+        with open(HISTORY_FILE, "r") as f:
             history = json.load(f)
 
         return jsonify(history)
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/clear_history", methods=["DELETE"])
+def clear_history():
+    try:
+        with open(HISTORY_FILE, "w") as f:
+            json.dump([], f)
+
+        return jsonify({"success": True})
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+
+@app.route("/stats")
+def stats():
+    try:
+        with open(HISTORY_FILE, "r") as f:
+            history = json.load(f)
+
+        faces = len([
+            file for file in os.listdir(UPLOAD_FOLDER)
+            if file.endswith(".jpg") and file != "temp.jpg"
+        ])
 
         return jsonify({
-            "error": str(e)
-        }), 500
+            "registered_faces": faces,
+            "recognitions": len(history)
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
