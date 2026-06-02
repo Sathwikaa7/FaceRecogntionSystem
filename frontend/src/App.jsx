@@ -13,11 +13,13 @@ function App() {
   const [messageType, setMessageType] = useState('')
   const [registeredFaces, setRegisteredFaces] = useState([])
   const [recognitionResult, setRecognitionResult] = useState(null)
+  const [history, setHistory] = useState([])
 
   const API_BASE = 'http://127.0.0.1:5000'
 
   useEffect(() => {
     loadRegisteredFaces()
+    loadHistory()
   }, [])
 
   const loadRegisteredFaces = async () => {
@@ -25,21 +27,26 @@ function App() {
       const response = await axios.get(
         `${API_BASE}/get_registered_faces`
       )
-
       setRegisteredFaces(response.data)
-
     } catch (error) {
-      console.error(
-        'Error loading registered faces:',
-        error
+      console.error('Error loading registered faces:', error)
+    }
+  }
+
+  const loadHistory = async () => {
+    try {
+      const response = await axios.get(
+        `${API_BASE}/history`
       )
+      setHistory(response.data)
+    } catch (error) {
+      console.error('Error loading history:', error)
     }
   }
 
   const captureImage = () => {
     if (webcamRef) {
       const imageSrc = webcamRef.getScreenshot()
-
       setCapturedImage(imageSrc)
       setMessage('')
       setRecognitionResult(null)
@@ -55,10 +62,7 @@ function App() {
 
   const registerFace = async () => {
     if (!capturedImage || !registerName.trim()) {
-      setMessage(
-        'Please capture an image and enter a name'
-      )
-
+      setMessage('Please capture an image and enter a name')
       setMessageType('error')
       return
     }
@@ -67,154 +71,84 @@ function App() {
     setMessage('')
 
     try {
-      // Convert image to blob
-      const blob = await fetch(capturedImage)
-        .then(res => res.blob())
-
-      // Create form data
+      const blob = await fetch(capturedImage).then(res => res.blob())
       const formData = new FormData()
-
-      formData.append(
-        'image',
-        blob,
-        'capture.jpg'
-      )
-
-      formData.append(
-        'name',
-        registerName.trim()
-      )
+      formData.append('image', blob, 'capture.jpg')
+      formData.append('name', registerName.trim())
 
       const response = await axios.post(
         `${API_BASE}/register_face`,
         formData,
-        {
-          headers: {
-            'Content-Type':
-              'multipart/form-data'
-          }
-        }
+        { headers: { 'Content-Type': 'multipart/form-data' } }
       )
 
       if (response.data.success) {
         setMessage(response.data.message)
         setMessageType('success')
-
         setRegisterName('')
         setCapturedImage(null)
-
         loadRegisteredFaces()
-
       } else {
         setMessage(response.data.message)
         setMessageType('error')
       }
-
     } catch (error) {
-      setMessage(
-        error.response?.data?.message ||
-        'Error registering face'
-      )
-
+      setMessage(error.response?.data?.message || 'Error registering face')
       setMessageType('error')
-
     } finally {
       setIsRegistering(false)
     }
   }
 
   const recognizeFace = async () => {
-  if (!capturedImage) {
-    setMessage('Please capture an image first')
-    setMessageType('error')
-    return
-  }
-
-  setIsRecognizing(true)
-  setMessage('')
-
-  try {
-
-    const blob = await fetch(
-      capturedImage
-    ).then(res => res.blob())
-
-    const formData = new FormData()
-
-    formData.append(
-      'image',
-      blob,
-      'capture.jpg'
-    )
-
-    const response = await axios.post(
-      `${API_BASE}/recognize_face`,
-      formData,
-      {
-        headers: {
-          'Content-Type':
-            'multipart/form-data'
-        }
-      }
-    )
-
-    if (
-      response.data.success &&
-      response.data.recognized
-    ) {
-
-      setRecognitionResult({
-        name: response.data.name,
-        confidence:
-          response.data.confidence,
-        message:
-          response.data.message
-      })
-
-      setMessage(
-        `Recognized: ${response.data.name}`
-      )
-
-      setMessageType('success')
-
-    } else {
-
-      setRecognitionResult(null)
-
-      setMessage(
-        response.data.message
-      )
-
+    if (!capturedImage) {
+      setMessage('Please capture an image first')
       setMessageType('error')
+      return
     }
 
-  } catch (error) {
+    setIsRecognizing(true)
+    setMessage('')
 
-    setMessage(
-      error.response?.data?.message ||
-      'Error recognizing face'
-    )
+    try {
+      const blob = await fetch(capturedImage).then(res => res.blob())
+      const formData = new FormData()
+      formData.append('image', blob, 'capture.jpg')
 
-    setMessageType('error')
+      const response = await axios.post(
+        `${API_BASE}/recognize_face`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      )
 
-  } finally {
-    setIsRecognizing(false)
+      if (response.data.success && response.data.recognized) {
+        setRecognitionResult({
+          name: response.data.name,
+          similarity: response.data.similarity,
+          message: response.data.message
+        })
+        setMessage(`Recognized: ${response.data.name}`)
+        setMessageType('success')
+        loadHistory()
+      } else {
+        setRecognitionResult(null)
+        setMessage(response.data.message)
+        setMessageType('error')
+      }
+    } catch (error) {
+      setMessage(error.response?.data?.message || 'Error recognizing face')
+      setMessageType('error')
+    } finally {
+      setIsRecognizing(false)
+    }
   }
-}
 
   const getMessageColor = () => {
     switch (messageType) {
-      case 'success':
-        return 'green'
-
-      case 'error':
-        return 'red'
-
-      case 'info':
-        return 'blue'
-
-      default:
-        return 'black'
+      case 'success': return 'green'
+      case 'error': return 'red'
+      case 'info': return 'blue'
+      default: return 'black'
     }
   }
 
@@ -231,47 +165,32 @@ function App() {
       />
       <br />
 
-<input
-  type="file"
-  accept="image/*"
-  onChange={(e) => {
-
-    const file = e.target.files[0]
-
-    if (file) {
-
-      const reader = new FileReader()
-
-      reader.onloadend = () => {
-        setCapturedImage(reader.result)
-      }
-
-      reader.readAsDataURL(file)
-    }
-  }}
-/>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          const file = e.target.files[0]
+          if (file) {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              setCapturedImage(reader.result)
+            }
+            reader.readAsDataURL(file)
+          }
+        }}
+      />
 
       {capturedImage && (
         <div>
           <h3>Captured Image</h3>
-
-          <img
-            src={capturedImage}
-            alt="Captured"
-            width={300}
-          />
+          <img src={capturedImage} alt="Captured" width={300} />
         </div>
       )}
 
       <br />
 
-      <button onClick={captureImage}>
-        Capture Image
-      </button>
-
-      <button onClick={clearImage}>
-        Clear
-      </button>
+      <button onClick={captureImage}>Capture Image</button>
+      <button onClick={clearImage}>Clear</button>
 
       <hr />
 
@@ -281,9 +200,7 @@ function App() {
         onClick={recognizeFace}
         disabled={!capturedImage || isRecognizing}
       >
-        {isRecognizing
-          ? 'Recognizing...'
-          : 'Recognize Face'}
+        {isRecognizing ? 'Recognizing...' : 'Recognize Face'}
       </button>
 
       <hr />
@@ -294,35 +211,44 @@ function App() {
         type="text"
         placeholder="Enter person's name"
         value={registerName}
-        onChange={(e) =>
-          setRegisterName(e.target.value)
-        }
+        onChange={(e) => setRegisterName(e.target.value)}
       />
 
       <button
         onClick={registerFace}
-        disabled={
-          !capturedImage ||
-          !registerName.trim() ||
-          isRegistering
-        }
+        disabled={!capturedImage || !registerName.trim() || isRegistering}
       >
-        {isRegistering
-          ? 'Registering...'
-          : 'Register Face'}
+        {isRegistering ? 'Registering...' : 'Register Face'}
       </button>
 
       <br />
       <br />
 
       {message && (
+        <div style={{ color: getMessageColor(), fontWeight: 'bold' }}>
+          {message}
+        </div>
+      )}
+
+      {recognitionResult && (
         <div
           style={{
-            color: getMessageColor(),
-            fontWeight: 'bold'
+            marginTop: '15px',
+            padding: '15px',
+            border: '1px solid #ddd',
+            borderRadius: '8px',
+            backgroundColor: '#f5f5f5'
           }}
         >
-          {message}
+          <h3>Recognition Result</h3>
+          <p>
+            <strong>Name:</strong>{" "}
+            {recognitionResult.name}
+          </p>
+          <p>
+            <strong>Similarity:</strong>{" "}
+            {recognitionResult.similarity}%
+          </p>
         </div>
       )}
 
@@ -338,6 +264,40 @@ function App() {
             <li key={index}>{name}</li>
           ))}
         </ul>
+      )}
+
+      <hr />
+
+      <h2>Recognition History</h2>
+
+      {history.length === 0 ? (
+        <p>No recognition history yet</p>
+      ) : (
+        <table
+          border="1"
+          cellPadding="10"
+          style={{ borderCollapse: 'collapse' }}
+        >
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Similarity</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history
+              .slice()
+              .reverse()
+              .map((item, index) => (
+                <tr key={index}>
+                  <td>{item.name}</td>
+                  <td>{item.similarity}%</td>
+                  <td>{item.time}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
       )}
     </div>
   )

@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from deepface import DeepFace
 import os
+import json
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -11,6 +13,15 @@ UPLOAD_FOLDER = "uploads"
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+HISTORY_FILE = os.path.join(
+    UPLOAD_FOLDER,
+    "history.json"
+)
+
+if not os.path.exists(HISTORY_FILE):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump([], f)
+
 
 @app.route("/")
 def home():
@@ -19,7 +30,9 @@ def home():
 
 @app.route("/verify", methods=["POST"])
 def verify_face():
+
     try:
+
         img1 = request.files["img1"]
         img2 = request.files["img2"]
 
@@ -43,12 +56,17 @@ def verify_face():
             enforce_detection=False
         )
 
+        similarity = round(
+            (1 - result["distance"]) * 100,
+            2
+        )
+
         return jsonify({
-            "verified": result["verified"]
+            "verified": result["verified"],
+            "similarity": similarity
         })
 
     except Exception as e:
-        print(e)
 
         return jsonify({
             "error": str(e)
@@ -57,14 +75,14 @@ def verify_face():
 
 @app.route("/register_face", methods=["POST"])
 def register_face():
+
     try:
+
         name = request.form.get("name")
         image = request.files.get("image")
 
-        print("NAME:", name)
-        print("IMAGE:", image)
-
         if not name or not image:
+
             return jsonify({
                 "success": False,
                 "message": "Missing name or image"
@@ -80,10 +98,9 @@ def register_face():
         return jsonify({
             "success": True,
             "message": f"{name} registered successfully"
-        }), 200
+        })
 
     except Exception as e:
-        print(e)
 
         return jsonify({
             "success": False,
@@ -93,10 +110,14 @@ def register_face():
 
 @app.route("/get_registered_faces")
 def get_registered_faces():
+
     try:
+
         faces = []
 
-        for file in os.listdir(UPLOAD_FOLDER):
+        for file in os.listdir(
+            UPLOAD_FOLDER
+        ):
 
             if (
                 file.endswith(".jpg")
@@ -110,7 +131,6 @@ def get_registered_faces():
         return jsonify(faces)
 
     except Exception as e:
-        print(e)
 
         return jsonify({
             "error": str(e)
@@ -119,10 +139,13 @@ def get_registered_faces():
 
 @app.route("/recognize_face", methods=["POST"])
 def recognize_face():
+
     try:
+
         image = request.files.get("image")
 
         if not image:
+
             return jsonify({
                 "success": False,
                 "message": "No image provided"
@@ -159,11 +182,6 @@ def recognize_face():
                 enforce_detection=False
             )
 
-            print(
-                file,
-                result["verified"]
-            )
-
             if result["verified"]:
 
                 name = file.replace(
@@ -171,28 +189,85 @@ def recognize_face():
                     ""
                 )
 
+                similarity = round(
+                    (1 - result["distance"]) * 100,
+                    2
+                )
+
+                with open(
+                    HISTORY_FILE,
+                    "r"
+                ) as f:
+
+                    history = json.load(f)
+
+                history.append({
+
+                    "name": name,
+                    "similarity": similarity,
+                    "time": datetime.now().strftime(
+                        "%d-%m-%Y %H:%M:%S"
+                    )
+
+                })
+
+                with open(
+                    HISTORY_FILE,
+                    "w"
+                ) as f:
+
+                    json.dump(
+                        history,
+                        f,
+                        indent=4
+                    )
+
                 return jsonify({
+
                     "success": True,
                     "recognized": True,
                     "name": name,
-                    "confidence": float(
-                        result["distance"]
-                    ),
+                    "similarity": similarity,
                     "message": "Face recognized"
+
                 })
 
         return jsonify({
+
             "success": True,
             "recognized": False,
             "message": "No matching face found"
+
         })
 
     except Exception as e:
-        print(e)
 
         return jsonify({
+
             "success": False,
             "message": str(e)
+
+        }), 500
+
+
+@app.route("/history")
+def history():
+
+    try:
+
+        with open(
+            HISTORY_FILE,
+            "r"
+        ) as f:
+
+            history = json.load(f)
+
+        return jsonify(history)
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
         }), 500
 
 
