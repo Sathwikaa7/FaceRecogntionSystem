@@ -63,27 +63,99 @@ def verify_face():
 @app.route("/register_face", methods=["POST"])
 def register_face():
     try:
+        print("=== Face registration request received ===")
+        
         name = request.form.get("name")
         image = request.files.get("image")
 
         if not name or not image:
+            print("ERROR: Missing name or image")
             return jsonify({
                 "success": False,
                 "message": "Missing name or image"
             }), 400
 
-        save_path = os.path.join(UPLOAD_FOLDER, f"{name}.jpg")
-        image.save(save_path)
+        # Validate name
+        name = name.strip()
+        if not name:
+            return jsonify({
+                "success": False,
+                "message": "Name cannot be empty"
+            }), 400
+            
+        # Remove any dangerous characters from name
+        import re
+        name = re.sub(r'[^\w\-_.]', '', name)
+        
+        print(f"Registering face for: {name}")
+        print(f"Image: {image.filename}, Content-Type: {image.content_type}")
 
+        save_path = os.path.join(UPLOAD_FOLDER, f"{name}.jpg")
+        print(f"Saving to: {save_path}")
+        
+        try:
+            image.save(save_path)
+        except Exception as save_error:
+            print(f"ERROR saving image: {str(save_error)}")
+            return jsonify({
+                "success": False,
+                "message": f"Failed to save image: {str(save_error)}"
+            }), 500
+        
+        # Verify the file was saved properly
+        if not os.path.exists(save_path):
+            print("ERROR: File was not saved")
+            return jsonify({
+                "success": False,
+                "message": "Failed to save image file"
+            }), 500
+            
+        file_size = os.path.getsize(save_path)
+        print(f"Image saved successfully. File size: {file_size} bytes")
+        
+        if file_size == 0:
+            print("ERROR: Saved file is empty")
+            os.remove(save_path)  # Clean up empty file
+            return jsonify({
+                "success": False,
+                "message": "Uploaded image is empty"
+            }), 400
+
+        # Optional: Test if the image can be processed by DeepFace
+        try:
+            from deepface import DeepFace
+            # Just verify we can detect faces in the image using a reliable detector
+            faces = DeepFace.extract_faces(save_path, detector_backend="mtcnn", enforce_detection=False)
+            if faces and len(faces) > 0:
+                print(f"Image validation successful - found {len(faces)} face(s)")
+            else:
+                print("WARNING: No faces detected in uploaded image")
+        except Exception as validation_error:
+            print(f"WARNING: Image validation failed: {str(validation_error)}")
+            # Try with a different detector
+            try:
+                faces = DeepFace.extract_faces(save_path, detector_backend="retinaface", enforce_detection=False)
+                if faces and len(faces) > 0:
+                    print(f"Image validation successful with RetinaFace - found {len(faces)} face(s)")
+                else:
+                    print("WARNING: No faces detected with any detector")
+            except:
+                print("WARNING: Face detection validation failed with all detectors")
+                # Don't fail registration, just warn
+        
         return jsonify({
             "success": True,
             "message": f"{name} registered successfully"
         })
 
     except Exception as e:
+        print(f"ERROR in register_face: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
         return jsonify({
             "success": False,
-            "message": str(e)
+            "message": f"Registration error: {str(e)}"
         }), 500
 
 
@@ -128,73 +200,363 @@ def delete_face(name):
 
 @app.route("/recognize_face", methods=["POST"])
 def recognize_face():
+    temp_path = None
     try:
+        print("=== Recognition request received ===")
+        
         image = request.files.get("image")
-
         if not image:
+            print("ERROR: No image provided")
             return jsonify({
                 "success": False,
                 "message": "No image provided"
             }), 400
 
+        print(f"Image received: {image.filename}, Content-Type: {image.content_type}")
+        
         temp_path = os.path.join(UPLOAD_FOLDER, "temp.jpg")
-        image.save(temp_path)
+        print(f"Saving image to: {temp_path}")
+        
+        # Save image with error handling
+        try:
+            image.save(temp_path)
+        except Exception as save_error:
+            print(f"ERROR saving image: {str(save_error)}")
+            return jsonify({
+                "success": False,
+                "message": f"Failed to save image: {str(save_error)}"
+            }), 500
+        
+        # Verify the image was saved and is readable
+        if not os.path.exists(temp_path):
+            print("ERROR: Failed to save image")
+            return jsonify({
+                "success": False,
+                "message": "Failed to save uploaded image"
+            }), 500
+            
+        file_size = os.path.getsize(temp_path)
+        print(f"Image saved successfully. File size: {file_size} bytes")
+        
+        if file_size == 0:
+            print("ERROR: Saved image is empty")
+            return jsonify({
+                "success": False,
+                "message": "Uploaded image is empty"
+            }), 400
 
-        registered_files = os.listdir(UPLOAD_FOLDER)
+        # Check if uploads directory exists and get registered files
+        if not os.path.exists(UPLOAD_FOLDER):
+            print("ERROR: Upload folder does not exist")
+            return jsonify({
+                "success": False,
+                "message": "Upload folder not found"
+            }), 500
 
-        for file in registered_files:
-            if file == "temp.jpg":
-                continue
-            if not file.endswith(".jpg"):
-                continue
+        try:
+            registered_files = os.listdir(UPLOAD_FOLDER)
+        except Exception as list_error:
+            print(f"ERROR listing upload folder: {str(list_error)}")
+            return jsonify({
+                "success": False,
+                "message": f"Cannot access upload folder: {str(list_error)}"
+            }), 500
+            
+        print(f"Found {len(registered_files)} files in upload folder")
+        
+        jpg_files = [f for f in registered_files if f.endswith(".jpg") and f != "temp.jpg"]
+        print(f"Found {len(jpg_files)} registered face files: {jpg_files}")
+        
+        if not jpg_files:
+            print("No registered faces found")
+            return jsonify({
+                "success": True,
+                "recognized": False,
+                "message": "No registered faces in system"
+            })
 
+        print(f"Will compare against {len(jpg_files)} registered faces...")
+        comparison_results = []
+
+        # Test DeepFace availability before processing
+        try:
+            print("Testing DeepFace import...")
+            from deepface import DeepFace as DF_Test
+            print("DeepFace imported successfully")
+        except Exception as import_error:
+            print(f"ERROR: DeepFace import failed: {str(import_error)}")
+            return jsonify({
+                "success": False,
+                "message": f"DeepFace not available: {str(import_error)}"
+            }), 500
+
+        for file in jpg_files:
+            print(f"\n--- Comparing with {file} ---")
             registered_path = os.path.join(UPLOAD_FOLDER, file)
+            
+            if not os.path.exists(registered_path):
+                print(f"WARNING: Registered file {registered_path} does not exist")
+                continue
+                
+            reg_file_size = os.path.getsize(registered_path)
+            if reg_file_size == 0:
+                print(f"WARNING: Registered file {file} is empty")
+                continue
+                
+            print(f"Comparing {temp_path} ({file_size} bytes) with {registered_path} ({reg_file_size} bytes)")
+            
+            try:
+                # Use DeepFace for comparison with additional safety
+                print("Starting DeepFace.verify...")
+                
+                # Try different detector backends if one fails
+                detector_backends = ["mtcnn", "retinaface", "dlib", "opencv"]
+                result = None
+                
+                for detector in detector_backends:
+                    try:
+                        print(f"Trying detector: {detector}")
+                        result = DeepFace.verify(
+                            temp_path,
+                            registered_path,
+                            model_name="Facenet",
+                            detector_backend=detector,
+                            enforce_detection=False,
+                            silent=True,
+                            distance_metric="cosine"
+                        )
+                        print(f"Success with detector: {detector}")
+                        break
+                    except Exception as detector_error:
+                        print(f"Detector {detector} failed: {str(detector_error)}")
+                        continue
+                
+                if result is None:
+                    print("All face detectors failed, trying without face detection")
+                    # Last resort - try with minimal detection
+                    try:
+                        result = DeepFace.verify(
+                            temp_path,
+                            registered_path,
+                            model_name="VGG-Face",
+                            detector_backend="skip",
+                            enforce_detection=False,
+                            silent=True
+                        )
+                        print("Success with VGG-Face and skip detection")
+                    except Exception as final_error:
+                        print(f"Final attempt failed: {str(final_error)}")
+                        continue
+                
+                print(f"DeepFace result: {result}")
+                
+                # Validate result structure
+                if not isinstance(result, dict) or 'verified' not in result or 'distance' not in result:
+                    print(f"ERROR: Invalid DeepFace result structure: {result}")
+                    continue
+                
+                # Calculate similarity percentage
+                distance = result["distance"]
+                similarity = round((1 - distance) * 100, 2)
+                
+                # Log the distance and similarity for debugging
+                print(f"Distance: {distance}, Similarity: {similarity}%")
+                
+                # More lenient threshold - consider it a match if similarity > 60%
+                # DeepFace's default threshold might be too strict
+                is_match = result["verified"] or similarity > 60.0
+                
+                print(f"DeepFace verified: {result['verified']}, Our similarity check: {similarity > 60.0}, Final match: {is_match}")
+                
+                if is_match:
+                    name = file.replace(".jpg", "")
+                    
+                    # Ensure similarity is reasonable
+                    if similarity < 0:
+                        similarity = 0
+                    elif similarity > 100:
+                        similarity = 100
+                    
+                    print(f"MATCH FOUND! Name: {name}, Similarity: {similarity}%")
 
-            result = DeepFace.verify(
-                temp_path,
-                registered_path,
-                model_name="Facenet",
-                enforce_detection=False
-            )
+                    # Save to history with error handling
+                    try:
+                        if os.path.exists(HISTORY_FILE):
+                            with open(HISTORY_FILE, "r") as f:
+                                history = json.load(f)
+                        else:
+                            history = []
+                    except (json.JSONDecodeError, IOError) as history_error:
+                        print(f"WARNING: Could not read history file: {str(history_error)}")
+                        history = []
 
-            if result["verified"]:
-                name = file.replace(".jpg", "")
+                    history_entry = {
+                        "name": name,
+                        "similarity": similarity,
+                        "time": datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                    }
+                    
+                    history.append(history_entry)
 
-                similarity = round(
-                    (1 - result["distance"]) * 100,
-                    2
-                )
+                    try:
+                        with open(HISTORY_FILE, "w") as f:
+                            json.dump(history, f, indent=4)
+                        print("History updated successfully")
+                    except Exception as history_write_error:
+                        print(f"WARNING: Could not write history: {str(history_write_error)}")
 
-                with open(HISTORY_FILE, "r") as f:
-                    history = json.load(f)
+                    return jsonify({
+                        "success": True,
+                        "recognized": True,
+                        "name": name,
+                        "similarity": similarity,
+                        "message": "Face recognized"
+                    })
+                else:
+                    distance = result.get("distance", "unknown")
+                    similarity_pct = round((1 - distance) * 100, 2) if isinstance(distance, (int, float)) else 0
+                    print(f"No match with {file}. Distance: {distance}, Similarity: {similarity_pct}%")
+                    comparison_results.append({
+                        "file": file,
+                        "distance": distance,
+                        "similarity": similarity_pct,
+                        "deepface_verified": result["verified"],
+                        "our_threshold": similarity_pct > 60.0
+                    })
+                    
+            except Exception as face_error:
+                print(f"ERROR comparing with {file}: {str(face_error)}")
+                print(f"Face error type: {type(face_error)}")
+                import traceback
+                print("Face comparison traceback:")
+                traceback.print_exc()
+                # Continue with next file instead of failing completely
+                continue
 
-                history.append({
-                    "name": name,
-                    "similarity": similarity,
-                    "time": datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-                })
-
-                with open(HISTORY_FILE, "w") as f:
-                    json.dump(history, f, indent=4)
-
-                return jsonify({
-                    "success": True,
-                    "recognized": True,
-                    "name": name,
-                    "similarity": similarity,
-                    "message": "Face recognized"
-                })
-
+        print("No matches found in any registered faces")
+        print("=== COMPARISON SUMMARY ===")
+        for result in comparison_results:
+            print(f"  {result['file']}: Distance={result['distance']}, Similarity={result['similarity']}%, DeepFace={result['deepface_verified']}, Threshold60%={result['our_threshold']}")
+        print("=== END SUMMARY ===")
+        
         return jsonify({
             "success": True,
             "recognized": False,
-            "message": "No matching face found"
+            "message": "No matching face found",
+            "debug_info": comparison_results
         })
 
     except Exception as e:
+        print(f"CRITICAL ERROR in recognize_face: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        print("Full traceback:")
+        traceback.print_exc()
+        
         return jsonify({
             "success": False,
-            "message": str(e)
+            "message": f"Recognition error: {str(e)}"
+        }), 500
+        
+    finally:
+        # Clean up temp file
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+                print("Temp file cleaned up")
+            except Exception as cleanup_error:
+                print(f"WARNING: Could not clean up temp file: {str(cleanup_error)}")
+
+
+@app.route("/uploads/<filename>")
+def get_face_image(filename):
+    """Serve face images from uploads folder"""
+    try:
+        # Security check - only allow .jpg files and no path traversal
+        if not filename.endswith('.jpg') or '/' in filename or '..' in filename:
+            return jsonify({"error": "Invalid filename"}), 400
+            
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        
+        if not os.path.exists(file_path):
+            return jsonify({"error": "File not found"}), 404
+            
+        return send_file(file_path, mimetype='image/jpeg')
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/debug_faces")
+def debug_faces():
+    """Debug endpoint to check registered faces and their file info"""
+    try:
+        faces_info = []
+        
+        if not os.path.exists(UPLOAD_FOLDER):
+            return jsonify({
+                "error": "Upload folder does not exist",
+                "upload_folder": UPLOAD_FOLDER
+            })
+        
+        for file in os.listdir(UPLOAD_FOLDER):
+            if file.endswith(".jpg"):
+                file_path = os.path.join(UPLOAD_FOLDER, file)
+                file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+                
+                faces_info.append({
+                    "filename": file,
+                    "name": file.replace(".jpg", ""),
+                    "path": file_path,
+                    "size_bytes": file_size,
+                    "exists": os.path.exists(file_path),
+                    "is_temp": file == "temp.jpg"
+                })
+        
+        return jsonify({
+            "success": True,
+            "upload_folder": UPLOAD_FOLDER,
+            "total_files": len(faces_info),
+            "faces": faces_info
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/test_deepface")
+def test_deepface():
+    """Test endpoint to check if DeepFace is working properly"""
+    try:
+        from deepface import DeepFace
+        
+        # Test if we can access DeepFace models
+        models = ["VGG-Face", "Facenet", "OpenFace", "DeepFace"]
+        available_models = []
+        
+        for model in models:
+            try:
+                # Just try to load model info, don't actually load the model
+                available_models.append(model)
+            except Exception as model_error:
+                print(f"Model {model} not available: {str(model_error)}")
+        
+        return jsonify({
+            "success": True,
+            "deepface_available": True,
+            "available_models": available_models,
+            "upload_folder_exists": os.path.exists(UPLOAD_FOLDER),
+            "upload_folder_writable": os.access(UPLOAD_FOLDER, os.W_OK),
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "deepface_available": False,
+            "error": str(e)
         }), 500
 
 

@@ -1,16 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import Webcam from 'react-webcam'
 import axios from 'axios'
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid
-} from 'recharts'
 import './App.css'
+import Sidebar from './components/Sidebar'
+import Header from './components/Header'
+import Dashboard from './components/Dashboard'
+import RegisterFace from './components/RegisterFace'
+import RegisteredFaces from './components/RegisteredFaces'
+import History from './components/History'
 
 function App() {
   const [webcamRef, setWebcamRef] = useState(null)
@@ -25,6 +21,8 @@ function App() {
   const [history, setHistory] = useState([])
   const [stats, setStats] = useState({ registered_faces: 0, recognitions: 0 })
   const [darkMode, setDarkMode] = useState(false)
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [cameraStarted, setCameraStarted] = useState(false)
 
   const API_BASE = 'http://127.0.0.1:5000'
 
@@ -61,7 +59,20 @@ function App() {
     }
   }
 
-  const captureImage = () => {
+  const captureImage = (imageData = null) => {
+    if (imageData) {
+      // Handle uploaded image
+      setCapturedImage(imageData)
+    } else if (webcamRef) {
+      // Handle webcam capture
+      const imageSrc = webcamRef.getScreenshot()
+      setCapturedImage(imageSrc)
+    }
+    setMessage('')
+    setRecognitionResult(null)
+  }
+
+  const captureWebcamImage = () => {
     if (webcamRef) {
       const imageSrc = webcamRef.getScreenshot()
       setCapturedImage(imageSrc)
@@ -119,6 +130,9 @@ function App() {
   }
 
   const recognizeFace = async () => {
+    console.log('Recognition started...')
+    console.log('Captured image exists:', !!capturedImage)
+    
     if (!capturedImage) {
       setMessage('Please capture an image first')
       setMessageType('error')
@@ -129,32 +143,39 @@ function App() {
     setMessage('')
 
     try {
+      console.log('Creating FormData for recognition...')
       const blob = await fetch(capturedImage).then(res => res.blob())
       const formData = new FormData()
       formData.append('image', blob, 'capture.jpg')
 
+      console.log('Sending recognition request to:', `${API_BASE}/recognize_face`)
       const response = await axios.post(
         `${API_BASE}/recognize_face`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       )
 
+      console.log('Recognition response:', response.data)
+
       if (response.data.success && response.data.recognized) {
+        console.log('Face recognized successfully:', response.data.name)
         setRecognitionResult({
           name: response.data.name,
           similarity: response.data.similarity,
           message: response.data.message
         })
-        setMessage(`Recognized: ${response.data.name}`)
+        setMessage(`Recognized: ${response.data.name} (${response.data.similarity}% confidence)`)
         setMessageType('success')
         loadHistory()
         loadStats()
       } else {
+        console.log('Face not recognized:', response.data.message)
         setRecognitionResult(null)
-        setMessage(response.data.message)
+        setMessage(response.data.message || 'No matching face found')
         setMessageType('error')
       }
     } catch (error) {
+      console.error('Recognition error:', error)
       setMessage(error.response?.data?.message || 'Error recognizing face')
       setMessageType('error')
     } finally {
@@ -178,255 +199,93 @@ function App() {
     loadStats()
   }
 
-  const getMessageColor = () => {
-    switch (messageType) {
-      case 'success': return 'green'
-      case 'error': return 'red'
-      case 'info': return 'blue'
-      default: return 'black'
-    }
-  }
-
-  // Prepare chart data: last 20 history entries in chronological order
-  const chartData = history
-    .slice()
-    .reverse()
-    .slice(-20)
-    .map((item, index) => ({
-      index: index + 1,
-      similarity: parseFloat(item.similarity),
-      name: item.name,
-      time: item.time
-    }))
-
   return (
-    <div
-      style={{
-        padding: '20px',
-        minHeight: '100vh',
-        backgroundColor: darkMode ? '#121212' : '#ffffff',
-        color: darkMode ? 'white' : 'black'
-      }}
-    >
-      {/* Header row with dark mode toggle */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Face Recognition System</h1>
-        <button onClick={() => setDarkMode(!darkMode)}>
-          {darkMode ? 'Light Mode' : 'Dark Mode'}
-        </button>
+    <div className={`min-h-screen ${darkMode ? 'dark bg-gray-900' : ''} flex`} style={{ background: 'var(--background)' }}>
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+      />
+
+      <div className="flex-1 flex flex-col min-h-screen">
+        <Header activeTab={activeTab} />
+
+        {activeTab === 'dashboard' && (
+          <Dashboard
+            stats={stats}
+            cameraStarted={cameraStarted}
+            setCameraStarted={setCameraStarted}
+            webcamRef={webcamRef}
+            setWebcamRef={setWebcamRef}
+            capturedImage={capturedImage}
+            captureImage={captureWebcamImage}
+            recognizeFace={recognizeFace}
+            isRecognizing={isRecognizing}
+            recognitionResult={recognitionResult}
+          />
+        )}
+
+        {activeTab === 'register' && (
+          <RegisterFace
+            webcamRef={webcamRef}
+            setWebcamRef={setWebcamRef}
+            capturedImage={capturedImage}
+            captureImage={captureImage}
+            captureWebcamImage={captureWebcamImage}
+            clearImage={clearImage}
+            registerName={registerName}
+            setRegisterName={setRegisterName}
+            registerFace={registerFace}
+            isRegistering={isRegistering}
+            cameraStarted={cameraStarted}
+            setCameraStarted={setCameraStarted}
+          />
+        )}
+
+        {activeTab === 'faces' && (
+          <RegisteredFaces
+            registeredFaces={registeredFaces}
+            deleteFace={deleteFace}
+            loadRegisteredFaces={loadRegisteredFaces}
+            setActiveTab={setActiveTab}
+          />
+        )}
+
+        {activeTab === 'history' && (
+          <History
+            history={history}
+            clearHistory={clearHistory}
+          />
+        )}
+
+        {/* Message Display for debugging */}
+        {message && (
+          <div className={`fixed bottom-6 right-6 p-4 rounded-xl shadow-lg backdrop-blur-lg transition-all duration-300 transform scale-in ${
+            messageType === 'success' 
+              ? 'bg-green-500/90 text-white border border-green-400/20' 
+              : 'bg-red-500/90 text-white border border-red-400/20'
+          }`} 
+          style={{ 
+            boxShadow: 'var(--shadow-lg)',
+            backdropFilter: 'blur(12px)',
+            zIndex: 1000
+          }}>
+            <div className="flex items-center space-x-3">
+              {messageType === 'success' ? (
+                <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center">
+                  <span className="text-xs">✓</span>
+                </div>
+              ) : (
+                <div className="w-5 h-5 bg-white/20 rounded-full flex items-center justify-center">
+                  <span className="text-xs">✕</span>
+                </div>
+              )}
+              <span className="font-medium text-sm">{message}</span>
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Stats Panel */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '20px',
-          marginBottom: '20px',
-          padding: '15px',
-          border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
-          borderRadius: '8px',
-          backgroundColor: darkMode ? '#1e1e1e' : '#f9f9f9'
-        }}
-      >
-        <div>
-          <strong>Registered Faces:</strong> {stats.registered_faces}
-        </div>
-        <div>
-          <strong>Total Recognitions:</strong> {stats.recognitions}
-        </div>
-      </div>
-
-      <h2>Camera</h2>
-
-      <Webcam
-        ref={setWebcamRef}
-        screenshotFormat="image/jpeg"
-        width={400}
-      />
-      <br />
-
-      <input
-        type="file"
-        accept="image/*"
-        onChange={(e) => {
-          const file = e.target.files[0]
-          if (file) {
-            const reader = new FileReader()
-            reader.onloadend = () => {
-              setCapturedImage(reader.result)
-            }
-            reader.readAsDataURL(file)
-          }
-        }}
-      />
-
-      {capturedImage && (
-        <div>
-          <h3>Captured Image</h3>
-          <img src={capturedImage} alt="Captured" width={300} />
-        </div>
-      )}
-
-      <br />
-
-      <button onClick={captureImage}>Capture Image</button>
-      <button onClick={clearImage}>Clear</button>
-
-      <hr />
-
-      <h2>Face Recognition</h2>
-
-      <button
-        onClick={recognizeFace}
-        disabled={!capturedImage || isRecognizing}
-      >
-        {isRecognizing ? 'Recognizing...' : 'Recognize Face'}
-      </button>
-
-      <hr />
-
-      <h2>Register New Face</h2>
-
-      <input
-        type="text"
-        placeholder="Enter person's name"
-        value={registerName}
-        onChange={(e) => setRegisterName(e.target.value)}
-      />
-
-      <button
-        onClick={registerFace}
-        disabled={!capturedImage || !registerName.trim() || isRegistering}
-      >
-        {isRegistering ? 'Registering...' : 'Register Face'}
-      </button>
-
-      <br />
-      <br />
-
-      {message && (
-        <div style={{ color: getMessageColor(), fontWeight: 'bold' }}>
-          {message}
-        </div>
-      )}
-
-      {recognitionResult && (
-        <div
-          style={{
-            marginTop: '15px',
-            padding: '15px',
-            border: `1px solid ${darkMode ? '#444' : '#ddd'}`,
-            borderRadius: '8px',
-            backgroundColor: darkMode ? '#1e1e1e' : '#f5f5f5'
-          }}
-        >
-          <h3>Recognition Result</h3>
-          <p><strong>Name:</strong> {recognitionResult.name}</p>
-          <p><strong>Similarity:</strong> {recognitionResult.similarity}%</p>
-        </div>
-      )}
-
-      <hr />
-
-      <h2>Registered Faces</h2>
-
-      {registeredFaces.length === 0 ? (
-        <p>No faces registered yet</p>
-      ) : (
-        <ul>
-          {registeredFaces.map((name, index) => (
-            <li key={index}>
-              {name}{' '}
-              <button onClick={() => deleteFace(name)}>Delete</button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <hr />
-
-      <h2>Recognition History</h2>
-
-      <button onClick={clearHistory}>Clear History</button>
-      {' '}
-      <button onClick={() => window.open(`${API_BASE}/export_history`)}>
-        Export CSV
-      </button>
-
-      {history.length === 0 ? (
-        <p>No recognition history yet</p>
-      ) : (
-        <>
-          {/* Analytics Chart */}
-          <h3>Similarity Over Time (last 20 recognitions)</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#333' : '#eee'} />
-              <XAxis
-                dataKey="index"
-                label={{ value: 'Recognition #', position: 'insideBottom', offset: -2 }}
-                tick={{ fill: darkMode ? '#ccc' : '#333' }}
-              />
-              <YAxis
-                domain={[0, 100]}
-                tickFormatter={(v) => `${v}%`}
-                tick={{ fill: darkMode ? '#ccc' : '#333' }}
-              />
-              <Tooltip
-                formatter={(value, name) => [`${value}%`, 'Similarity']}
-                labelFormatter={(label) => {
-                  const item = chartData[label - 1]
-                  return item ? `${item.name} — ${item.time}` : `#${label}`
-                }}
-                contentStyle={{
-                  backgroundColor: darkMode ? '#222' : '#fff',
-                  color: darkMode ? '#fff' : '#000',
-                  border: `1px solid ${darkMode ? '#555' : '#ccc'}`
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="similarity"
-                stroke="#4f8ef7"
-                strokeWidth={2}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-
-          {/* History Table */}
-          <table
-            border="1"
-            cellPadding="10"
-            style={{
-              borderCollapse: 'collapse',
-              marginTop: '10px',
-              color: darkMode ? 'white' : 'black'
-            }}
-          >
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Similarity</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history
-                .slice()
-                .reverse()
-                .map((item, index) => (
-                  <tr key={index}>
-                    <td>{item.name}</td>
-                    <td>{item.similarity}%</td>
-                    <td>{item.time}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </>
-      )}
     </div>
   )
 }
