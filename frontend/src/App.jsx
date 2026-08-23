@@ -24,7 +24,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [cameraStarted, setCameraStarted] = useState(false)
 
-  const API_BASE = 'http://127.0.0.1:5000'
+  const API_BASE = 'https://facerecogntionsystem.onrender.com'
 
   useEffect(() => {
     loadRegisteredFaces()
