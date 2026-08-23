@@ -20,6 +20,7 @@ CORS(app, resources={
 })
 
 UPLOAD_FOLDER = "uploads"
+MATCH_SIMILARITY_THRESHOLD = 60.0
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -315,9 +316,17 @@ def recognize_face():
                 print(f"Distance: {distance}")
                 print(f"DeepFace threshold: {threshold}")
 
-                is_match = result["verified"]
+                # DeepFace's built-in threshold can be stricter than the value
+                # shown to users. Keep a consistent, explicit application
+                # threshold so a valid match is not discarded solely because
+                # DeepFace returned `verified: false`.
+                is_match = result["verified"] or similarity >= MATCH_SIMILARITY_THRESHOLD
 
-                print(f"Final match: {is_match}")
+                print(
+                    f"Final match: {is_match} "
+                    f"(DeepFace={result['verified']}, similarity={similarity}%, "
+                    f"threshold={MATCH_SIMILARITY_THRESHOLD}%)"
+                )
                 
                 if is_match:
                     name = file.replace(".jpg", "")
@@ -373,7 +382,7 @@ def recognize_face():
                         "distance": distance,
                         "similarity": similarity_pct,
                         "deepface_verified": result["verified"],
-                        "our_threshold": similarity_pct > 60.0
+                        "our_threshold": similarity_pct >= MATCH_SIMILARITY_THRESHOLD
                     })
                     
             except Exception as face_error:
