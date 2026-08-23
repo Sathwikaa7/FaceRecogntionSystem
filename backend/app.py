@@ -1,9 +1,10 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from deepface import DeepFace
 import os
 import json
 import csv
+import cv2
+import numpy as np
 from flask import send_file
 from datetime import datetime
 
@@ -20,7 +21,61 @@ CORS(app, resources={
 })
 
 UPLOAD_FOLDER = "uploads"
-MATCH_SIMILARITY_THRESHOLD = 60.0
+LBPH_CONFIDENCE_THRESHOLD = 75.0
+
+
+def extract_face(image_path):
+    """Return a normalized grayscale face crop, or the image when no face is found."""
+    image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError("Uploaded image could not be read")
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    detector = cv2.CascadeClassifier(
+        os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+    )
+    if detector.empty():
+        raise RuntimeError("OpenCV face detector could not be loaded")
+
+    faces = detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+    if len(faces):
+        x, y, width, height = max(faces, key=lambda face: face[2] * face[3])
+        gray = gray[y:y + height, x:x + width]
+
+    return cv2.equalizeHist(cv2.resize(gray, (160, 160)))
+
+
+def recognize_with_lbph(image_path):
+    """Recognize a face without loading TensorFlow or a DeepFace model."""
+    registered_files = [
+        file for file in os.listdir(UPLOAD_FOLDER)
+        if file.endswith(".jpg") and file != "temp.jpg"
+    ]
+    if not registered_files:
+        return None, None
+
+    training_faces = []
+    labels = []
+    names = []
+    for file in registered_files:
+        try:
+            training_faces.append(extract_face(os.path.join(UPLOAD_FOLDER, file)))
+            labels.append(len(names))
+            names.append(file[:-4])
+        except (ValueError, cv2.error) as error:
+            print(f"Skipping unreadable registered face {file}: {error}")
+
+    if not training_faces:
+        return None, None
+    if not hasattr(cv2, "face"):
+        raise RuntimeError("OpenCV contrib face-recognition module is unavailable")
+
+    recognizer = cv2.face.LBPHFaceRecognizer_create()
+    recognizer.train(training_faces, np.array(labels, dtype=np.int32))
+    label, distance = recognizer.predict(extract_face(image_path))
+    if distance > LBPH_CONFIDENCE_THRESHOLD:
+        return None, float(distance)
+    return names[label], float(distance)
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -216,6 +271,39 @@ def recognize_face():
                 "success": False,
                 "message": "Uploaded image is empty"
             }), 400
+
+        name, distance = recognize_with_lbph(temp_path)
+        if name is None:
+            message = "No registered faces in system" if distance is None else "No matching face found"
+            return jsonify({
+                "success": True,
+                "recognized": False,
+                "message": message
+            })
+
+        similarity = round(max(0, min(100, 100 - distance)), 2)
+        try:
+            with open(HISTORY_FILE, "r") as history_file:
+                history = json.load(history_file)
+        except (json.JSONDecodeError, OSError):
+            history = []
+
+        history.append({
+            "name": name,
+            "similarity": similarity,
+            "time": datetime.now().isoformat(timespec="seconds"),
+            "success": True
+        })
+        with open(HISTORY_FILE, "w") as history_file:
+            json.dump(history, history_file, indent=4)
+
+        return jsonify({
+            "success": True,
+            "recognized": True,
+            "name": name,
+            "similarity": similarity,
+            "message": "Face recognized"
+        })
 
         # Check if uploads directory exists and get registered files
         if not os.path.exists(UPLOAD_FOLDER):

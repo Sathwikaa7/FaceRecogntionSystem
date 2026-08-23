@@ -1,9 +1,6 @@
 flask
 flask-cors
-deepface
-opencv-python-headless==4.8.1.78
-tensorflow
-tf-keras
-numpy
+opencv-contrib-python-headless==4.8.1.78
+numpy==1.24.4
 pillow
 python-dotenv
