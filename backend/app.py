@@ -24,10 +24,7 @@ UPLOAD_FOLDER = "uploads"
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-HISTORY_FILE = os.path.join(
-    UPLOAD_FOLDER,
-    "history.json"
-)
+HISTORY_FILE = os.path.join(UPLOAD_FOLDER, "history.json")
 
 if not os.path.exists(HISTORY_FILE):
     with open(HISTORY_FILE, "w") as f:
@@ -93,6 +90,12 @@ def register_face():
 
         import re
         name = re.sub(r'[^\w\-_.]', '', name)
+
+        if not name or name in {'.', '..'}:
+            return jsonify({
+                "success": False,
+                "message": "Name must include letters or numbers"
+            }), 400
 
         save_path = os.path.join(UPLOAD_FOLDER, f"{name}.jpg")
 
@@ -341,7 +344,8 @@ def recognize_face():
                     history_entry = {
                         "name": name,
                         "similarity": similarity,
-                        "time": datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                        "time": datetime.now().isoformat(timespec="seconds"),
+                        "success": True
                     }
                     
                     history.append(history_entry)
@@ -592,10 +596,7 @@ def export_history():
                     item["time"]
                 ])
 
-        return send_file(
-            csv_file,
-            as_attachment=True
-        )
+        return send_file(csv_file, as_attachment=True, download_name="recognition-history.csv")
 
     except Exception as e:
 
@@ -616,6 +617,6 @@ def debug():
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
-        port=5000,
+        port=int(os.environ.get("PORT", 5000)),
         debug=False
     )
