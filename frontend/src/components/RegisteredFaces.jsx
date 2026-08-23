@@ -11,7 +11,8 @@ const RegisteredFaces = ({ registeredFaces, deleteFace, loadRegisteredFaces, set
 
   const handleViewImage = (faceName) => {
     // Open the face image in a modal
-    setSelectedImage(`http://127.0.0.1:5000/uploads/${faceName}.jpg`)
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || 'https://facerecogntionsystem.onrender.com').replace(/\/$/, '')
+    setSelectedImage(`${apiBase}/uploads/${encodeURIComponent(faceName)}.jpg`)
   }
 
   const handleDeleteClick = (faceName) => {

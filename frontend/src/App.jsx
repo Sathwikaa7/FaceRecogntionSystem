@@ -8,6 +8,8 @@ import RegisterFace from './components/RegisterFace'
 import RegisteredFaces from './components/RegisteredFaces'
 import History from './components/History'
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'https://facerecogntionsystem.onrender.com').replace(/\/$/, '')
+
 function App() {
   const [webcamRef, setWebcamRef] = useState(null)
   const [capturedImage, setCapturedImage] = useState(null)
@@ -23,8 +25,6 @@ function App() {
   const [darkMode, setDarkMode] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [cameraStarted, setCameraStarted] = useState(false)
-
-  const API_BASE = 'https://facerecogntionsystem.onrender.com'
 
   useEffect(() => {
     loadRegisteredFaces()
@@ -185,7 +185,7 @@ function App() {
 
   const deleteFace = async (name) => {
     try {
-      await axios.delete(`${API_BASE}/delete_face/${name}`)
+      await axios.delete(`${API_BASE}/delete_face/${encodeURIComponent(name)}`)
       loadRegisteredFaces()
       loadStats()
     } catch (error) {
@@ -194,9 +194,30 @@ function App() {
   }
 
   const clearHistory = async () => {
-    await axios.delete(`${API_BASE}/clear_history`)
-    loadHistory()
-    loadStats()
+    try {
+      await axios.delete(`${API_BASE}/clear_history`)
+      await Promise.all([loadHistory(), loadStats()])
+    } catch (error) {
+      setMessage(error.response?.data?.message || 'Unable to clear recognition history')
+      setMessageType('error')
+    }
+  }
+
+  const exportHistory = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/export_history`, { responseType: 'blob' })
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'recognition-history.csv'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      setMessage('Unable to export recognition history')
+      setMessageType('error')
+    }
   }
 
   return (
@@ -257,6 +278,7 @@ function App() {
           <History
             history={history}
             clearHistory={clearHistory}
+            exportHistory={exportHistory}
           />
         )}
 

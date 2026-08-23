@@ -278,14 +278,18 @@ def recognize_face():
             print(f"Comparing {temp_path} ({file_size} bytes) with {registered_path} ({reg_file_size} bytes)")
             
             try:
-                print("Starting DeepFace.verify with OpenCV...")
+                print("Starting DeepFace.verify...")
 
                 try:
                     result = DeepFace.verify(
                         img1_path=temp_path,
                         img2_path=registered_path,
                         model_name="Facenet",
-                        detector_backend="opencv",
+                        # Render's OpenCV build is missing CascadeClassifier,
+                        # which crashes DeepFace before comparison. The images
+                        # are captured/uploaded as face portraits, so bypass
+                        # that unavailable detector and compare their embeddings.
+                        detector_backend="skip",
                         distance_metric="cosine",
                         enforce_detection=False
                     )

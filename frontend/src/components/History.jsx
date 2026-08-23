@@ -1,6 +1,6 @@
 import React from 'react'
 
-const History = ({ history, clearHistory }) => {
+const History = ({ history, clearHistory, exportHistory }) => {
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString()
   }
@@ -25,6 +25,7 @@ const History = ({ history, clearHistory }) => {
             
             <div className="flex space-x-3">
               <button 
+                onClick={exportHistory}
                 className="px-4 py-2 rounded-xl font-medium transition-all duration-300 hover:transform hover:scale-105"
                 style={{ 
                   background: 'rgba(159, 122, 234, 0.1)', 
@@ -97,10 +98,10 @@ const History = ({ history, clearHistory }) => {
                           
                           <div className="text-right">
                             <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-                              {item.confidence || 'N/A'}% confidence
+                              {item.similarity ?? item.confidence ?? 'N/A'}% confidence
                             </div>
                             <div className="text-xs" style={{ color: 'var(--muted)' }}>
-                              {formatDate(item.timestamp || new Date())}
+                              {formatDate(item.time || item.timestamp)}
                             </div>
                           </div>
                         </div>
@@ -108,10 +109,10 @@ const History = ({ history, clearHistory }) => {
                         <div className="flex items-center space-x-4">
                           <div className="flex items-center space-x-2">
                             <div className="w-2 h-2 rounded-full" 
-                              style={{ background: item.success ? 'var(--success)' : 'var(--danger)' }}></div>
+                              style={{ background: (item.success ?? true) ? 'var(--success)' : 'var(--danger)' }}></div>
                             <span className="text-sm font-medium" 
-                              style={{ color: item.success ? 'var(--success)' : 'var(--danger)' }}>
-                              {item.success ? 'Successful' : 'Failed'}
+                              style={{ color: (item.success ?? true) ? 'var(--success)' : 'var(--danger)' }}>
+                              {(item.success ?? true) ? 'Successful' : 'Failed'}
                             </span>
                           </div>
                           
