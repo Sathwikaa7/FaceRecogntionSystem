@@ -219,10 +219,11 @@ function App() {
             webcamRef={webcamRef}
             setWebcamRef={setWebcamRef}
             capturedImage={capturedImage}
-            captureImage={captureWebcamImage}
+            captureImage={captureImage}
             recognizeFace={recognizeFace}
             isRecognizing={isRecognizing}
             recognitionResult={recognitionResult}
+            setActiveTab={setActiveTab}
           />
         )}
 
