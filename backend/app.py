@@ -274,50 +274,25 @@ def recognize_face():
             print(f"Comparing {temp_path} ({file_size} bytes) with {registered_path} ({reg_file_size} bytes)")
             
             try:
-                # Use DeepFace for comparison with additional safety
-                print("Starting DeepFace.verify...")
-                
-                # Try different detector backends if one fails
-                detector_backends = ["mtcnn", "retinaface", "dlib", "opencv"]
-                result = None
-                
-                for detector in detector_backends:
-                    try:
-                        print(f"Trying detector: {detector}")
-                        result = DeepFace.verify(
-                            temp_path,
-                            registered_path,
-                            model_name="Facenet",
-                            detector_backend=detector,
-                            enforce_detection=False,
-                            silent=True,
-                            distance_metric="cosine"
-                        )
-                        print(f"Success with detector: {detector}")
-                        break
-                    except Exception as detector_error:
-                        print(f"Detector {detector} failed: {str(detector_error)}")
-                        continue
-                
-                if result is None:
-                    print("All face detectors failed, trying without face detection")
-                    # Last resort - try with minimal detection
-                    try:
-                        result = DeepFace.verify(
-                            temp_path,
-                            registered_path,
-                            model_name="VGG-Face",
-                            detector_backend="skip",
-                            enforce_detection=False,
-                            silent=True
-                        )
-                        print("Success with VGG-Face and skip detection")
-                    except Exception as final_error:
-                        print(f"Final attempt failed: {str(final_error)}")
-                        continue
-                
-                print(f"DeepFace result: {result}")
-                
+                print("Starting DeepFace.verify with OpenCV...")
+
+                try:
+                    result = DeepFace.verify(
+                        temp_path,
+                        registered_path,
+                        model_name="Facenet",
+                        detector_backend="opencv",
+                        enforce_detection=False,
+                        silent=True,
+                        distance_metric="cosine"
+                    )
+
+                    print(f"DeepFace result: {result}")
+
+                except Exception as face_error:
+                    print(f"DeepFace verification failed for {file}: {str(face_error)}")
+                    continue
+
                 # Validate result structure
                 if not isinstance(result, dict) or 'verified' not in result or 'distance' not in result:
                     print(f"ERROR: Invalid DeepFace result structure: {result}")
@@ -637,5 +612,5 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=5000,
-        debug=True
+        debug=False
     )
