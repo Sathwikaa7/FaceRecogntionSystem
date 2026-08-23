@@ -280,7 +280,7 @@ def recognize_face():
                     result = DeepFace.verify(
                         img1_path=temp_path,
                         img2_path=registered_path,
-                        model_name="Facenet",
+                        model_name="Facenet512",
                         detector_backend="opencv",
                         distance_metric="cosine",
                         enforce_detection=False
