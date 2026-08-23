@@ -280,7 +280,7 @@ def recognize_face():
                     result = DeepFace.verify(
                         img1_path=temp_path,
                         img2_path=registered_path,
-                        model_name="Facenet512",
+                        model_name="Facenet",
                         detector_backend="opencv",
                         distance_metric="cosine",
                         enforce_detection=False
@@ -289,8 +289,15 @@ def recognize_face():
                     print(f"DeepFace result: {result}")
 
                 except Exception as face_error:
+                    import traceback
                     print(f"DeepFace verification failed for {file}: {str(face_error)}")
-                    continue
+                    traceback.print_exc()
+
+                    return jsonify({
+                        "success": False,
+                        "recognized": False,
+                        "message": f"DeepFace verification failed: {str(face_error)}"
+                    }), 500
 
                 # Validate result structure
                 if not isinstance(result, dict) or "verified" not in result or "distance" not in result:
