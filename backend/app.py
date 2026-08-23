@@ -64,85 +64,46 @@ def verify_face():
 def register_face():
     try:
         print("=== Face registration request received ===")
-        
+
         name = request.form.get("name")
         image = request.files.get("image")
 
         if not name or not image:
-            print("ERROR: Missing name or image")
             return jsonify({
                 "success": False,
                 "message": "Missing name or image"
             }), 400
 
-        # Validate name
         name = name.strip()
+
         if not name:
             return jsonify({
                 "success": False,
                 "message": "Name cannot be empty"
             }), 400
-            
-        # Remove any dangerous characters from name
+
         import re
         name = re.sub(r'[^\w\-_.]', '', name)
-        
-        print(f"Registering face for: {name}")
-        print(f"Image: {image.filename}, Content-Type: {image.content_type}")
 
         save_path = os.path.join(UPLOAD_FOLDER, f"{name}.jpg")
-        print(f"Saving to: {save_path}")
-        
-        try:
-            image.save(save_path)
-        except Exception as save_error:
-            print(f"ERROR saving image: {str(save_error)}")
-            return jsonify({
-                "success": False,
-                "message": f"Failed to save image: {str(save_error)}"
-            }), 500
-        
-        # Verify the file was saved properly
+
+        image.save(save_path)
+
         if not os.path.exists(save_path):
-            print("ERROR: File was not saved")
             return jsonify({
                 "success": False,
-                "message": "Failed to save image file"
+                "message": "Failed to save image"
             }), 500
-            
-        file_size = os.path.getsize(save_path)
-        print(f"Image saved successfully. File size: {file_size} bytes")
-        
-        if file_size == 0:
-            print("ERROR: Saved file is empty")
-            os.remove(save_path)  # Clean up empty file
+
+        if os.path.getsize(save_path) == 0:
+            os.remove(save_path)
             return jsonify({
                 "success": False,
                 "message": "Uploaded image is empty"
             }), 400
 
-        # Optional: Test if the image can be processed by DeepFace
-        try:
-            from deepface import DeepFace
-            # Just verify we can detect faces in the image using a reliable detector
-            faces = DeepFace.extract_faces(save_path, detector_backend="mtcnn", enforce_detection=False)
-            if faces and len(faces) > 0:
-                print(f"Image validation successful - found {len(faces)} face(s)")
-            else:
-                print("WARNING: No faces detected in uploaded image")
-        except Exception as validation_error:
-            print(f"WARNING: Image validation failed: {str(validation_error)}")
-            # Try with a different detector
-            try:
-                faces = DeepFace.extract_faces(save_path, detector_backend="retinaface", enforce_detection=False)
-                if faces and len(faces) > 0:
-                    print(f"Image validation successful with RetinaFace - found {len(faces)} face(s)")
-                else:
-                    print("WARNING: No faces detected with any detector")
-            except:
-                print("WARNING: Face detection validation failed with all detectors")
-                # Don't fail registration, just warn
-        
+        print(f"Face registered successfully: {name}")
+
         return jsonify({
             "success": True,
             "message": f"{name} registered successfully"
@@ -150,12 +111,10 @@ def register_face():
 
     except Exception as e:
         print(f"ERROR in register_face: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
+
         return jsonify({
             "success": False,
-            "message": f"Registration error: {str(e)}"
+            "message": str(e)
         }), 500
 
 
