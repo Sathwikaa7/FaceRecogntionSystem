@@ -624,6 +624,15 @@ def export_history():
         }), 500
 
 
+@app.route("/debug")
+def debug():
+    return jsonify({
+        "cwd": os.getcwd(),
+        "upload_folder": os.path.abspath(UPLOAD_FOLDER),
+        "files": os.listdir(UPLOAD_FOLDER)
+    })
+
+
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
