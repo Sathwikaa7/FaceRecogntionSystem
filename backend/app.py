@@ -278,13 +278,12 @@ def recognize_face():
 
                 try:
                     result = DeepFace.verify(
-                        temp_path,
-                        registered_path,
+                        img1_path=temp_path,
+                        img2_path=registered_path,
                         model_name="Facenet",
                         detector_backend="opencv",
-                        enforce_detection=False,
-                        silent=True,
-                        distance_metric="cosine"
+                        distance_metric="cosine",
+                        enforce_detection=False
                     )
 
                     print(f"DeepFace result: {result}")
@@ -294,22 +293,21 @@ def recognize_face():
                     continue
 
                 # Validate result structure
-                if not isinstance(result, dict) or 'verified' not in result or 'distance' not in result:
+                if not isinstance(result, dict) or "verified" not in result or "distance" not in result:
                     print(f"ERROR: Invalid DeepFace result structure: {result}")
                     continue
-                
-                # Calculate similarity percentage
+
                 distance = result["distance"]
+                threshold = result.get("threshold")
                 similarity = round((1 - distance) * 100, 2)
-                
-                # Log the distance and similarity for debugging
-                print(f"Distance: {distance}, Similarity: {similarity}%")
-                
-                # More lenient threshold - consider it a match if similarity > 60%
-                # DeepFace's default threshold might be too strict
-                is_match = result["verified"] or similarity > 60.0
-                
-                print(f"DeepFace verified: {result['verified']}, Our similarity check: {similarity > 60.0}, Final match: {is_match}")
+
+                print(f"DeepFace verified: {result['verified']}")
+                print(f"Distance: {distance}")
+                print(f"DeepFace threshold: {threshold}")
+
+                is_match = result["verified"]
+
+                print(f"Final match: {is_match}")
                 
                 if is_match:
                     name = file.replace(".jpg", "")
