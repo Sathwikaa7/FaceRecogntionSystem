@@ -8,7 +8,16 @@ from flask import send_file
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)
+
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "https://face-recognition-frontend-u9ws.onrender.com",
+            "http://localhost:3001",
+            "http://localhost:5173"
+        ]
+    }
+})
 
 UPLOAD_FOLDER = "uploads"
 
